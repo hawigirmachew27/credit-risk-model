@@ -1,6 +1,7 @@
 .venv
 
 data/
+raw/
 *.csv
 
 __pycache__/
