@@ -196,6 +196,60 @@ def get_preprocessing_pipeline() -> Pipeline:
     ])
     return pipeline
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 8. Task 4 — Proxy Target Variable via K-Means RFM Clustering
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_proxy_target(rfm: pd.DataFrame, n_clusters: int = 3) -> pd.DataFrame:
+    """
+    Task 4: Cluster customers using K-Means on scaled RFM features and
+    assign a binary is_high_risk label.
+
+    High-risk cluster = lowest Frequency AND lowest Monetary AND highest Recency
+    (i.e., least engaged customers).
+
+    Returns rfm DataFrame with added columns:
+        - rfm_cluster   : cluster label (0, 1, 2)
+        - is_high_risk  : 1 = high risk, 0 = low risk
+    """
+    logger.info("Building proxy target variable via K-Means RFM clustering...")
+
+    rfm = rfm.copy()
+    features = ["Recency", "Frequency", "Monetary"]
+
+    # Scale RFM before clustering (critical — Monetary dominates unscaled)
+    scaler = StandardScaler()
+    rfm_scaled = scaler.fit_transform(rfm[features])
+
+    # K-Means clustering with fixed random seed for reproducibility
+    kmeans = KMeans(n_clusters=n_clusters, random_state=RANDOM_STATE, n_init=10)
+    rfm["rfm_cluster"] = kmeans.fit_predict(rfm_scaled)
+
+    # Identify high-risk cluster: highest mean Recency, lowest Frequency & Monetary
+    cluster_summary = rfm.groupby("rfm_cluster")[features].mean()
+    logger.info(f"Cluster summary:\n{cluster_summary.to_string()}")
+
+    # Score each cluster: high recency = bad, high freq/monetary = good
+    # Normalise each dimension to [0,1] then combine
+    cs = cluster_summary.copy()
+    cs["score"] = (
+        (cs["Recency"]   - cs["Recency"].min())   / (cs["Recency"].max()   - cs["Recency"].min() + 1e-9)
+        - (cs["Frequency"] - cs["Frequency"].min()) / (cs["Frequency"].max() - cs["Frequency"].min() + 1e-9)
+        - (cs["Monetary"]  - cs["Monetary"].min())  / (cs["Monetary"].max()  - cs["Monetary"].min() + 1e-9)
+    )
+    high_risk_cluster = int(cs["score"].idxmax())
+    logger.info(f"High-risk cluster identified: cluster {high_risk_cluster}")
+
+    rfm["is_high_risk"] = (rfm["rfm_cluster"] == high_risk_cluster).astype(int)
+    high_risk_pct = rfm["is_high_risk"].mean() * 100
+    logger.info(
+        f"Proxy target assigned: {rfm['is_high_risk'].sum():,} high-risk customers "
+        f"({high_risk_pct:.1f}%)"
+    )
+    return rfm
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 9. Master Pipeline — Raw CSV → Model-Ready Dataset
 # ──────────────────────────────────────────────────────────────────────────────
