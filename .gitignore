@@ -5,3 +5,8 @@ raw/
 *.csv
 
 __pycache__/
+
+*.db
+
+mlruns/
+

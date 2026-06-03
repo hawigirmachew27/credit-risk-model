@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+
+  mlflow:
+    image: python:3.11-slim
+    container_name: bati_mlflow
+    command: >
+      bash -c "pip install mlflow==2.10.0 --quiet &&
+               mlflow server
+               --host 0.0.0.0
+               --port 5000
+               --backend-store-uri sqlite:///mlflow.db
+               --default-artifact-root /mlartifacts"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlartifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  api:
+    build: .
+    container_name: bati_credit_risk_api
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MODEL_NAME=bati_bank_credit_risk_champion
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    volumes:
+      - ./data/processed:/app/data/processed:ro
+
+volumes:
+  mlflow_data:
